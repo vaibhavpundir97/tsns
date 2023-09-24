@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+tsc
+tsd
+
+# data files
+*.txt
+*.json
+
+# google rpc generated files
+*.pb.*

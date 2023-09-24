@@ -79,13 +79,12 @@ struct Client {
 };
 
 //Vector that stores every client that has been created
-std::vector<Client> client_db;
+std::vector<Client*> client_db;
 
 Client * search_user(std::string username) {
-    // Client * client;
     for(auto & user : client_db) {
-        if(user.username == username)
-           return &user;
+        if(user->username == username)
+          return user;
     }
     return nullptr;
 }
@@ -106,8 +105,8 @@ class SNSServiceImpl final : public SNSService::Service {
     **********/
     
     Client * user = search_user(request->username());
-    for(Client c : client_db) {
-        list_reply->add_all_users(c.username);
+    for(auto & c : client_db) {
+        list_reply->add_all_users(c->username);
     }
 
     list_reply->add_followers(user->username);
@@ -177,8 +176,8 @@ class SNSServiceImpl final : public SNSService::Service {
     if(search_user(request->username())) {
       reply->set_msg("Already logged in");
     } else {
-      Client user;
-      user.username = request->username();
+      Client * user = new Client();
+      user->username = request->username();
       client_db.push_back(user);
       reply->set_msg("Login Successful!");
     }

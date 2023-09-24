@@ -199,10 +199,12 @@ class SNSServiceImpl final : public SNSService::Service {
       std::ofstream user_file(file_name,
                               std::ios::app|std::ios::out|std::ios::in);
       google::protobuf::Timestamp timestamp = msg.timestamp();
-      std::int64_t time = google::protobuf::util::TimeUtil::TimestampToSeconds(
+      std::time_t time = google::protobuf::util::TimeUtil::TimestampToTimeT(
         timestamp);
-      std::string input = std::to_string(time) + "|" + msg.username() + ":" +
-                          msg.msg();
+      char time_str[20];
+      strftime(time_str, 20, "%F %T", localtime(&time));
+      std::string input = "T " + std::string(time_str) + "\nU " +
+                          msg.username() + "\nW " + msg.msg() + "\n";
 
       if(msg.msg() != "initialize timeline") {
         user_file << input;
@@ -222,33 +224,43 @@ class SNSServiceImpl final : public SNSService::Service {
         if(user->stream == 0)
           user->stream = stream;
         std::string line;
-        std::vector<std::string> latest_20;
+        std::vector<std::vector<std::string>> latest_20;
         std::ifstream following_file(user->username + "_following.txt");
 
         int i = 0;
         while(getline(following_file, line)) {
+          std::vector<std::string> post;
+          post.push_back(line);
+          getline(following_file, line);
+          post.push_back(line);
+          getline(following_file, line);
+          post.push_back(line);
+
           if(user->following_file_size > 20 &&
             i < user->following_file_size - 20) {
             ++i;
             continue;
           }
-          latest_20.push_back(line);
+
+          latest_20.push_back(post);
+          getline(following_file, line);
         }
 
         reverse(latest_20.begin(), latest_20.end());
         Message _msg;
         for(auto & post : latest_20) {
-          int i1 = post.find('|');
-          int i2 = post.find(':');
+          _msg.set_username(post[1].substr(2, std::string::npos));
+          _msg.set_msg(post[2].substr(2, std::string::npos));
 
-          _msg.set_username(post.substr(i1 + 1, i2 - i1 - 1));
-          _msg.set_msg(post.substr(i2 + 1, std::string::npos));
-
+          struct std::tm tm;
+          memset(&tm, 0, sizeof(std::tm));
+          strptime(post[0].substr(2, std::string::npos).c_str(), "%F %T", &tm);
           google::protobuf::Timestamp* msg_time =
             new google::protobuf::Timestamp();
-          msg_time->set_seconds(std::stoll(post.substr(0, i1)));
+          msg_time->set_seconds(mktime(&tm));
           msg_time->set_nanos(0);
           _msg.set_allocated_timestamp(msg_time);
+
           stream->Write(_msg);
         }
       }

@@ -81,14 +81,18 @@ struct Client {
 //Vector that stores every client that has been created
 std::vector<Client*> client_db;
 
+// Helper function that search for a user by username
+// and return the pointer to that user
 Client * search_user(std::string username) {
-    for(auto & user : client_db) {
-        if(user->username == username)
-          return user;
-    }
-    return nullptr;
+  for(auto & user : client_db) {
+    if(user->username == username)
+      return user;
+  }
+  return nullptr;
 }
 
+// Helper function that checks if the given client is in the following_list
+// Returns true if client is in the following_list otherwise false
 bool is_following(std::vector<Client*> following_list, Client client) {
   for(auto &f : following_list) {
     if(client == *f)
@@ -103,15 +107,19 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
-    
+
+    // Find the current user with given username
     Client * user = search_user(request->username());
+    // Iterate over client_db and add all the users to
+    // list_reply->all_users
     for(auto & c : client_db) {
-        list_reply->add_all_users(c->username);
+      list_reply->add_all_users(c->username);
     }
 
-    list_reply->add_followers(user->username);
+    // Iterate over the user's followers and add to
+    // list_reply->followers
     for(auto & follower : user->client_followers) {
-        list_reply->add_followers(follower->username);
+      list_reply->add_followers(follower->username);
     }
     return Status::OK;
   }
@@ -122,17 +130,21 @@ class SNSServiceImpl final : public SNSService::Service {
     YOUR CODE HERE
     **********/
 
+    // Find the current user with given username
     Client * user = search_user(request->username());
+    // Find the user that has to be followed
     Client * f_user = search_user(request->arguments(0));
+    // If f_user is not in client_db
     if(!f_user) {
-        reply->set_msg("ERROR -- Invalid username");
+      reply->set_msg("ERROR -- Invalid username");
+    // If user and f_user are same or user is already following f_user
     } else if(*user == *f_user || is_following(user->client_following,
-        *f_user)) {
-        reply->set_msg("ERROR -- Already following");
+              *f_user)) {
+      reply->set_msg("ERROR -- Already following");
     } else {
-        user->client_following.push_back(f_user);
-        f_user->client_followers.push_back(user);
-        reply->set_msg("SUCCESS -- Following");
+      user->client_following.push_back(f_user);
+      f_user->client_followers.push_back(user);
+      reply->set_msg("SUCCESS -- Following");
     }
     return Status::OK; 
   }
@@ -143,26 +155,32 @@ class SNSServiceImpl final : public SNSService::Service {
     YOUR CODE HERE
     **********/
 
+    // Find the current user with given username
     Client * user = search_user(request->username());
+    // Find the user that has to be unfollowed
     Client * f_user = search_user(request->arguments(0));
+    // If f_user not found or user and f_user are same
     if(!f_user || *user == *f_user) {
-        reply->set_msg("ERROR -- Invalid username");
+      reply->set_msg("ERROR -- Invalid username");
+    // If user is not following f_user
     } else if(!is_following(user->client_following, *f_user)) {
-        reply->set_msg("ERROR -- Not following");
+      reply->set_msg("ERROR -- Not following");
     } else {
-        std::vector<Client*>::iterator iter = user->client_following.begin();
-        for(iter; iter < user->client_following.end(); ++iter) {
-          if(**iter == *f_user)
-            break;
-        }
-        user->client_following.erase(iter);
-        iter = f_user->client_followers.begin();
-        for(iter; iter < f_user->client_followers.end(); ++iter) {
-          if(**iter == *user)
-            break;
-        }
-        f_user->client_followers.erase(iter);
-        reply->set_msg("SUCCESS -- Unfollowed");
+      // Find f_user in user->client_following and remove
+      std::vector<Client*>::iterator iter = user->client_following.begin();
+      for(iter; iter < user->client_following.end(); ++iter) {
+        if(**iter == *f_user)
+          break;
+      }
+      user->client_following.erase(iter);
+      // Find user in f_user->client_followers and remove
+      iter = f_user->client_followers.begin();
+      for(iter; iter < f_user->client_followers.end(); ++iter) {
+        if(**iter == *user)
+          break;
+      }
+      f_user->client_followers.erase(iter);
+      reply->set_msg("SUCCESS -- Unfollowed");
     }
     return Status::OK;
   }
@@ -173,6 +191,8 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
+
+    // If user is already in client_db
     if(search_user(request->username())) {
       reply->set_msg("Already logged in");
     } else {
@@ -193,22 +213,31 @@ class SNSServiceImpl final : public SNSService::Service {
 
     Message msg;
 
+    // continuously read from stream by using loop
     while(stream->Read(&msg)) {
+      // Get the user with username as msg.username()
       Client * user = search_user(msg.username());
+      // Generate a user file to store user's post
       std::string file_name = user->username + ".txt";
       std::ofstream user_file(file_name,
                               std::ios::app|std::ios::out|std::ios::in);
+      // Convert timestamp in the format <yyyy-mm-dd hh:mm:ss>
       google::protobuf::Timestamp timestamp = msg.timestamp();
       std::time_t time = google::protobuf::util::TimeUtil::TimestampToTimeT(
         timestamp);
       char time_str[20];
       strftime(time_str, 20, "%F %T", localtime(&time));
+      // Generate input to the file (as per required format)
       std::string input = "T " + std::string(time_str) + "\nU " +
                           msg.username() + "\nW " + msg.msg() + "\n";
 
+      // If the user is in timeline mode and creates a post
       if(msg.msg() != "initialize timeline") {
+        // Save the post in the <username>.txt
         user_file << input;
 
+        // Save the post to all the other user's <username>_following.txt
+        // that are in the user's client_followers list
         for(auto & follower : user->client_followers) {
           if(follower->stream != 0)
             follower->stream->Write(msg);
@@ -217,24 +246,42 @@ class SNSServiceImpl final : public SNSService::Service {
           std::ofstream following_file(follower_file,
                                       std::ios::app|std::ios::out|std::ios::in);
           following_file << input;
+          // Increment follower's following_file_size to reflect number of
+          // posts in the <username>_following.txt
           follower->following_file_size++;
         }
 
-      } else {
+      }
+      // If the user just entered the timeline mode
+      // i.e. msg.msg() == "initialize timeline"
+      // fetch the latest 20 posts from the users that the current user follows
+      // which means read the last 20 posts from <username>_following.txt
+      else {
         if(user->stream == 0)
           user->stream = stream;
         std::string line;
         std::vector<std::vector<std::string>> latest_20;
+        // Open the <username>_following.txt for reading
         std::ifstream following_file(user->username + "_following.txt");
 
         int i = 0;
+        // Iterate over the lines in file to get post, username and timestamp
+        /*
+        Each post format:
+        T yyyy-mm-dd hh:mm:ss
+        U <username>
+        W <post>
+        Empty Line
+        */
         while(getline(following_file, line)) {
+          // post vector-> containing timestamp, username and post
           std::vector<std::string> post;
-          post.push_back(line);
+          post.push_back(line); // Timestamp
           getline(following_file, line);
-          post.push_back(line);
+          post.push_back(line); // Username
           getline(following_file, line);
-          post.push_back(line);
+          post.push_back(line); // Post
+          getline(following_file, line);  // Empty Line
 
           if(user->following_file_size > 20 &&
             i < user->following_file_size - 20) {
@@ -243,15 +290,20 @@ class SNSServiceImpl final : public SNSService::Service {
           }
 
           latest_20.push_back(post);
-          getline(following_file, line);
         }
 
+        // reverse the vector that contains the last 20 posts
+        // so that the posts are in reverse chronological order
         reverse(latest_20.begin(), latest_20.end());
         Message _msg;
+        // Iterate over the 20 posts and create a Message object for each
         for(auto & post : latest_20) {
+          // set the username and message
           _msg.set_username(post[1].substr(2, std::string::npos));
-          _msg.set_msg(post[2].substr(2, std::string::npos));
+          _msg.set_msg(post[2].substr(2, std::string::npos) + "\n");
 
+          // Convert time from string format to google.protobuf.Timestamp
+          // and set the timestamp
           struct std::tm tm;
           memset(&tm, 0, sizeof(std::tm));
           strptime(post[0].substr(2, std::string::npos).c_str(), "%F %T", &tm);
@@ -261,7 +313,7 @@ class SNSServiceImpl final : public SNSService::Service {
           msg_time->set_nanos(0);
           _msg.set_allocated_timestamp(msg_time);
 
-          stream->Write(_msg);
+          stream->Write(_msg);  // write the message to the stream
         }
       }
     }
